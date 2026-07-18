@@ -249,6 +249,133 @@ def _newer(a: dt.datetime | None, b: dt.datetime | None) -> bool:
     return a > b
 
 
+# ─── BlueZ pairing / bonding ────────────────────────────────────────────────
+# The BF720's User Data service (0x181C, incl. the UCP consent characteristic
+# 0x2A9F) requires an ENCRYPTED link on BlueZ — the characteristics are not even
+# discoverable until the device is bonded. bleak's pair() needs a BlueZ agent to
+# exist; a bare add-on container has none, so we register our own (auto-accepts
+# Just Works, supplies the PIN for Passkey Entry). Mirrors ble-scale-sync #168.
+_AGENT_PATH = "/beurer/agent"
+_AGENT_BUS = None  # kept alive for the process lifetime
+
+try:
+    from dbus_fast import BusType, Variant
+    from dbus_fast.aio import MessageBus
+    from dbus_fast.service import ServiceInterface, method
+
+    class _PairingAgent(ServiceInterface):
+        """Minimal org.bluez.Agent1 that completes pairing without a UI."""
+
+        def __init__(self, passkey: int | None) -> None:
+            super().__init__("org.bluez.Agent1")
+            self._passkey = passkey or 0
+
+        @method()
+        def Release(self):  # noqa: N802
+            pass
+
+        @method()
+        def RequestPinCode(self, device: "o") -> "s":  # noqa: N802,F821
+            return f"{self._passkey:04d}"
+
+        @method()
+        def RequestPasskey(self, device: "o") -> "u":  # noqa: N802,F821
+            return int(self._passkey)
+
+        @method()
+        def DisplayPasskey(self, device: "o", passkey: "u", entered: "q"):  # noqa: N802,F821
+            pass
+
+        @method()
+        def DisplayPinCode(self, device: "o", pincode: "s"):  # noqa: N802,F821
+            pass
+
+        @method()
+        def RequestConfirmation(self, device: "o", passkey: "u"):  # noqa: N802,F821
+            pass  # accept (Just Works / numeric comparison)
+
+        @method()
+        def RequestAuthorization(self, device: "o"):  # noqa: N802,F821
+            pass  # accept
+
+        @method()
+        def AuthorizeService(self, device: "o", uuid: "s"):  # noqa: N802,F821
+            pass  # accept
+
+        @method()
+        def Cancel(self):  # noqa: N802
+            pass
+
+    _HAS_DBUS = True
+except ImportError:
+    _HAS_DBUS = False
+
+
+async def register_pairing_agent(passkey: int | None) -> None:
+    """Register a system BlueZ pairing agent so bleak's pair() can complete."""
+    global _AGENT_BUS
+    if not _HAS_DBUS:
+        _LOGGER.warning("dbus-fast unavailable; cannot register a pairing agent.")
+        return
+    try:
+        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        bus.export(_AGENT_PATH, _PairingAgent(passkey))
+        introspection = await bus.introspect("org.bluez", "/org/bluez")
+        obj = bus.get_proxy_object("org.bluez", "/org/bluez", introspection)
+        manager = obj.get_interface("org.bluez.AgentManager1")
+        await manager.call_register_agent(_AGENT_PATH, "KeyboardDisplay")
+        try:
+            await manager.call_request_default_agent(_AGENT_PATH)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("RequestDefaultAgent failed: %s", err)
+        _AGENT_BUS = bus  # keep the connection alive
+        _LOGGER.info("Registered BlueZ pairing agent.")
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Could not register BlueZ pairing agent: %s", err)
+
+
+def _has_ucp(client: BleakClient) -> bool:
+    target = CHAR_USER_CONTROL_POINT.lower()
+    return any(
+        ch.uuid.lower() == target
+        for service in client.services
+        for ch in service.characteristics
+    )
+
+
+async def _set_trusted(client: BleakClient) -> None:
+    """Mark the device Trusted so future reconnects reuse the bond (best-effort)."""
+    if _AGENT_BUS is None or not _HAS_DBUS:
+        return
+    try:
+        path = client._backend._device_path  # type: ignore[attr-defined]  # noqa: SLF001
+        introspection = await _AGENT_BUS.introspect("org.bluez", path)
+        obj = _AGENT_BUS.get_proxy_object("org.bluez", path, introspection)
+        props = obj.get_interface("org.freedesktop.DBus.Properties")
+        await props.call_set("org.bluez.Device1", "Trusted", Variant("b", True))
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Could not set Trusted: %s", err)
+
+
+async def _ensure_bonded(client: BleakClient) -> None:
+    """Bond with the scale so the encrypted User Data service becomes usable."""
+    try:
+        await client.pair()  # no-op if already paired; needs our agent otherwise
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Pairing failed (continuing unbonded): %s", err)
+    await _set_trusted(client)
+    # After a fresh bond the encrypted characteristics may only appear on a new
+    # connection — reconnect once if the UCP characteristic is still missing.
+    if not _has_ucp(client):
+        _LOGGER.info("UCP characteristic not visible yet; reconnecting on encrypted link...")
+        try:
+            await client.disconnect()
+            await asyncio.sleep(1.0)
+            await client.connect()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Reconnect after pairing failed: %s", err)
+
+
 # ─── BLE read ───────────────────────────────────────────────────────────────
 def _is_bf720(device, adv) -> bool:
     if SCALE_ADDRESS:
@@ -286,6 +413,8 @@ async def read_measurements(device) -> dict[int, Measurement]:
     client = BleakClient(device)
     await client.connect()
     try:
+        # The User Data service (2A9F) needs an encrypted link on BlueZ.
+        await _ensure_bonded(client)
         try:
             await client.write_gatt_char(
                 CHAR_CURRENT_TIME, build_current_time(dt.datetime.now()), response=True
@@ -380,6 +509,10 @@ async def main() -> None:
         _LOGGER.error("No valid users configured. Add at least one user (name, index, PIN).")
         sys.exit(1)
     _LOGGER.info("Loaded %d user(s): indices %s", len(USERS), [u["user_index"] for u in USERS])
+
+    # Register a BlueZ pairing agent up front so the encrypted User Data service
+    # becomes reachable (BF720 requires a bonded link on Linux/BlueZ).
+    await register_pairing_agent(USERS[0]["pin"] if USERS else None)
 
     client = make_mqtt()
     publish_discovery(client)

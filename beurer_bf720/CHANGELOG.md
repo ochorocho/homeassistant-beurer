@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+- Fix "Characteristic 2A9F not found" / repeated "device disconnected" on
+  Home Assistant OS. The BF720's User Data service needs a bonded/encrypted link
+  on BlueZ: register a BlueZ pairing agent (bleak's `pair()` needs one to exist),
+  bond before subscribing, mark the device Trusted so reconnects reuse the bond,
+  and re-read services on the encrypted link. Adds a `dbus-fast` dependency.
+
 ## 0.1.1
 
 - Fix crash on startup (`TypeError: string indices must be integers`): read the
