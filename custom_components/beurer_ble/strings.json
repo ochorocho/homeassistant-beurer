@@ -1,0 +1,72 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "bluetooth_confirm": {
+        "description": "Set up {name}? You will next enter the consent PIN for a user profile stored on the scale."
+      },
+      "user": {
+        "description": "Select your Beurer scale.",
+        "data": {
+          "address": "Bluetooth device"
+        }
+      },
+      "add_user": {
+        "title": "Add a scale user",
+        "description": "Each on-scale profile has its own consent PIN (shown on the scale when that profile is selected). The user index is the profile slot (usually 1 for the first profile).",
+        "data": {
+          "name": "Name",
+          "user_index": "User index (scale profile slot)",
+          "pin": "Consent PIN (0-9999)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This scale is already configured.",
+      "no_devices_found": "No Beurer scale found. Wake the scale (step on it) and try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "add_user": "Add a user",
+          "remove_user": "Remove a user"
+        }
+      },
+      "add_user": {
+        "title": "Add a scale user",
+        "data": {
+          "name": "Name",
+          "user_index": "User index (scale profile slot)",
+          "pin": "Consent PIN (0-9999)"
+        }
+      },
+      "remove_user": {
+        "data": {
+          "user_index": "User to remove"
+        }
+      }
+    },
+    "error": {
+      "index_exists": "A user with that index is already configured."
+    },
+    "abort": {
+      "no_users": "There are no users to remove."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "weight": { "name": "Weight" },
+      "body_fat": { "name": "Body fat" },
+      "muscle": { "name": "Muscle" },
+      "body_water": { "name": "Body water" },
+      "bmi": { "name": "BMI" },
+      "basal_metabolism": { "name": "Basal metabolism" },
+      "muscle_mass": { "name": "Muscle mass" },
+      "water_mass": { "name": "Water mass" },
+      "soft_lean_mass": { "name": "Soft lean mass" },
+      "impedance": { "name": "Impedance" }
+    }
+  }
+}

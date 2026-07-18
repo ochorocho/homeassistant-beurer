@@ -1,0 +1,44 @@
+name: Beurer BF720 Scale
+version: "0.1.0"
+slug: beurer_bf720
+description: >-
+  Read a Beurer BF720 body-composition scale over Bluetooth and publish
+  per-user measurements to Home Assistant via MQTT auto-discovery.
+url: https://github.com/ochorocho/ha_beurer
+panel_icon: mdi:scale-bathroom
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: services
+boot: auto
+# The HA base image ships its own S6 init, so disable Docker's.
+init: false
+# BLE via the host's BlueZ requires host D-Bus + raw network access, and the
+# default AppArmor profile denies the D-Bus calls bleak needs (see the
+# ble-scale-sync add-on notes and issue #271 there).
+host_network: true
+host_dbus: true
+privileged:
+  - NET_ADMIN
+  - NET_RAW
+apparmor: false
+# Pulls MQTT broker credentials from the Supervisor (Mosquitto add-on).
+services:
+  - mqtt:need
+options:
+  scale_address: ""
+  scan_interval: 30
+  debug: false
+  users:
+    - name: "Me"
+      user_index: 1
+      pin: 0
+schema:
+  scale_address: "str?"
+  scan_interval: "int(10,3600)"
+  debug: "bool"
+  users:
+    - name: "str"
+      user_index: "int(1,255)"
+      pin: "int(0,9999)"
