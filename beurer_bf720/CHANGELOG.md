@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Fix crash on startup (`TypeError: string indices must be integers`): read the
+  add-on options (especially the `users` list) directly from `/data/options.json`
+  instead of passing a complex list through a bashio environment variable.
+
 ## 0.1.0
 
 - Initial release.

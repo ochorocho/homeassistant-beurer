@@ -20,11 +20,28 @@ from dataclasses import dataclass
 import paho.mqtt.client as mqtt
 from bleak import BleakClient, BleakScanner
 
-# ─── Config from the add-on options (via run.sh env) ────────────────────────
-SCALE_ADDRESS = os.environ.get("SCALE_ADDRESS", "").strip()
-SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL", "30"))
-DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-USERS = json.loads(os.environ.get("USERS_JSON", "[]"))
+# ─── Config ─────────────────────────────────────────────────────────────────
+# Read the add-on options straight from /data/options.json — a list of objects
+# (users) does not round-trip cleanly through a bashio env var. Fall back to env
+# vars for local (non-add-on) runs.
+_OPTIONS_FILE = "/data/options.json"
+try:
+    with open(_OPTIONS_FILE, encoding="utf-8") as _f:
+        _OPTS = json.load(_f)
+except (OSError, ValueError):
+    _OPTS = {}
+
+
+def _opt(key: str, env: str, default):
+    if key in _OPTS and _OPTS[key] not in (None, ""):
+        return _OPTS[key]
+    return os.environ.get(env, default)
+
+
+SCALE_ADDRESS = str(_opt("scale_address", "SCALE_ADDRESS", "")).strip()
+SCAN_INTERVAL = int(_opt("scan_interval", "SCAN_INTERVAL", 30))
+DEBUG = str(_opt("debug", "DEBUG", "false")).lower() in ("true", "1")
+USERS = _OPTS.get("users") or json.loads(os.environ.get("USERS_JSON", "[]"))
 
 MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))

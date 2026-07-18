@@ -1,5 +1,5 @@
 name: Beurer BF720 Scale
-version: "0.1.0"
+version: "0.1.1"
 slug: beurer_bf720
 description: >-
   Read a Beurer BF720 body-composition scale over Bluetooth and publish
