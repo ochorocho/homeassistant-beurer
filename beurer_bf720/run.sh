@@ -2,11 +2,7 @@
 # shellcheck shell=bash
 set -e
 
-export SCALE_ADDRESS="$(bashio::config 'scale_address')"
-export SCAN_INTERVAL="$(bashio::config 'scan_interval')"
-export DEBUG="$(bashio::config 'debug')"
-export USERS_JSON="$(bashio::config 'users')"
-
+# Scalar options + the users list are read from /data/options.json by the app.
 if bashio::services.available "mqtt"; then
     export MQTT_HOST="$(bashio::services 'mqtt' 'host')"
     export MQTT_PORT="$(bashio::services 'mqtt' 'port')"

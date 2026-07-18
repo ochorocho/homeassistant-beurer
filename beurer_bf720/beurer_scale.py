@@ -41,7 +41,47 @@ def _opt(key: str, env: str, default):
 SCALE_ADDRESS = str(_opt("scale_address", "SCALE_ADDRESS", "")).strip()
 SCAN_INTERVAL = int(_opt("scan_interval", "SCAN_INTERVAL", 30))
 DEBUG = str(_opt("debug", "DEBUG", "false")).lower() in ("true", "1")
-USERS = _OPTS.get("users") or json.loads(os.environ.get("USERS_JSON", "[]"))
+
+
+def _normalize_users(raw) -> list[dict]:
+    """Coerce the configured users into a clean list of {name, user_index, pin}.
+
+    Tolerant of odd shapes (an entry arriving as a JSON string, string numbers,
+    etc.) so a misconfiguration logs a clear warning instead of crashing later.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = []
+    if not isinstance(raw, list):
+        return []
+    users: list[dict] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            try:
+                entry = json.loads(entry)
+            except ValueError:
+                pass
+        if not isinstance(entry, dict) or "user_index" not in entry or "pin" not in entry:
+            _EARLY_WARNINGS.append(f"Skipping malformed user entry: {entry!r}")
+            continue
+        try:
+            users.append(
+                {
+                    "name": str(entry.get("name") or f"BF720 user {entry['user_index']}"),
+                    "user_index": int(entry["user_index"]),
+                    "pin": int(entry["pin"]),
+                }
+            )
+        except (TypeError, ValueError):
+            _EARLY_WARNINGS.append(f"Skipping user entry with bad index/pin: {entry!r}")
+    return users
+
+
+_EARLY_WARNINGS: list[str] = []
+_raw_users = _OPTS["users"] if "users" in _OPTS else json.loads(os.environ.get("USERS_JSON", "[]"))
+USERS = _normalize_users(_raw_users)
 
 MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
@@ -258,7 +298,7 @@ async def read_measurements(device) -> dict[int, Measurement]:
         for user in USERS:
             await client.write_gatt_char(
                 CHAR_USER_CONTROL_POINT,
-                build_consent(int(user["user_index"]), int(user["pin"])),
+                build_consent(user["user_index"], user["pin"]),
                 response=True,
             )
             await asyncio.sleep(_CONSENT_SETTLE)
@@ -297,8 +337,8 @@ def make_mqtt() -> mqtt.Client:
 
 def publish_discovery(client: mqtt.Client) -> None:
     for user in USERS:
-        index = int(user["user_index"])
-        name = user.get("name") or f"BF720 user {index}"
+        index = user["user_index"]  # already an int (normalized at load)
+        name = user["name"]
         device = {
             "identifiers": [f"{BASE_TOPIC}_{index}"],
             "name": name,
@@ -334,9 +374,12 @@ def publish_state(client: mqtt.Client, index: int, m: Measurement) -> None:
 
 # ─── Main loop ──────────────────────────────────────────────────────────────
 async def main() -> None:
+    for warning in _EARLY_WARNINGS:
+        _LOGGER.warning(warning)
     if not USERS:
-        _LOGGER.error("No users configured. Add at least one user (name, index, PIN).")
+        _LOGGER.error("No valid users configured. Add at least one user (name, index, PIN).")
         sys.exit(1)
+    _LOGGER.info("Loaded %d user(s): indices %s", len(USERS), [u["user_index"] for u in USERS])
 
     client = make_mqtt()
     publish_discovery(client)

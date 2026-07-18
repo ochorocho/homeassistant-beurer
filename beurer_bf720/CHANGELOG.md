@@ -5,6 +5,9 @@
 - Fix crash on startup (`TypeError: string indices must be integers`): read the
   add-on options (especially the `users` list) directly from `/data/options.json`
   instead of passing a complex list through a bashio environment variable.
+- Harden user parsing: tolerate odd shapes (entries as JSON strings, string
+  numbers), skip malformed entries with a clear warning, and log the loaded user
+  indices at startup.
 
 ## 0.1.0
 
