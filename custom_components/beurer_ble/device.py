@@ -22,6 +22,7 @@ from .const import (
     CHAR_CURRENT_TIME,
     CHAR_USER_CONTROL_POINT,
     CHAR_WEIGHT,
+    CONNECT_CAPTURE_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ async def async_read_measurements(
         if idx is None:
             return
         prev = results.get(idx)
-        if prev is None or _newer(measurement.timestamp, prev.timestamp):
+        if prev is None or parser.newer(measurement.timestamp, prev.timestamp):
             results[idx] = measurement
 
     def handle_ucp(_char, data: bytearray) -> None:
@@ -80,6 +81,15 @@ async def async_read_measurements(
         BleakClient, ble_device, ble_device.address
     )
     try:
+        # The scale's User Data / body-composition characteristics require an
+        # encrypted, bonded link on BlueZ. CoreBluetooth and ESP32 proxies bond
+        # transparently; here we make a best-effort attempt and carry on if the
+        # backend has no pairing agent (the OS-level bond then covers it).
+        try:
+            await client.pair()
+        except Exception as err:  # noqa: BLE001 - not all backends/agents support pairing
+            _LOGGER.debug("Pairing not available/needed: %s", err)
+
         try:
             await client.write_gatt_char(
                 CHAR_CURRENT_TIME, parser.build_current_time(dt.datetime.now()), response=True
@@ -91,24 +101,26 @@ async def async_read_measurements(
         await client.start_notify(CHAR_WEIGHT, handle_weight)
         await client.start_notify(CHAR_BODY_COMPOSITION, handle_bodycomp)
 
-        for cred in users:
-            consent = parser.build_consent(cred.user_index, cred.pin)
-            _LOGGER.debug("Consent as user %s", cred.user_index)
-            await client.write_gatt_char(CHAR_USER_CONTROL_POINT, consent, response=True)
-            await asyncio.sleep(_CONSENT_SETTLE)
+        # Bound the whole consent/collect phase so a stuck consent can't hold the
+        # connection open indefinitely.
+        try:
+            async with asyncio.timeout(CONNECT_CAPTURE_SECONDS):
+                for cred in users:
+                    consent = parser.build_consent(cred.user_index, cred.pin)
+                    _LOGGER.debug("Consent as user %s", cred.user_index)
+                    await client.write_gatt_char(
+                        CHAR_USER_CONTROL_POINT, consent, response=True
+                    )
+                    await asyncio.sleep(_CONSENT_SETTLE)
+        except TimeoutError:
+            _LOGGER.debug(
+                "Capture window (%ss) elapsed before all consents completed",
+                CONNECT_CAPTURE_SECONDS,
+            )
     finally:
         try:
             await client.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Disconnect failed: %s", err)
 
     return results
-
-
-def _newer(a: dt.datetime | None, b: dt.datetime | None) -> bool:
-    """True if timestamp a is strictly newer than b (None sorts oldest)."""
-    if a is None:
-        return False
-    if b is None:
-        return True
-    return a > b

@@ -16,7 +16,7 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 
 from . import parser
 from .const import POLL_MIN_INTERVAL_SECONDS
-from .device import UserCredential, _newer, async_read_measurements
+from .device import UserCredential, async_read_measurements
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +68,6 @@ class BeurerCoordinator(ActiveBluetoothDataUpdateCoordinator[dict[int, parser.Me
         merged = dict(self.data)
         for index, measurement in fresh.items():
             prev = merged.get(index)
-            if prev is None or _newer(measurement.timestamp, prev.timestamp):
+            if prev is None or parser.newer(measurement.timestamp, prev.timestamp):
                 merged[index] = measurement
         return merged

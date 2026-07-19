@@ -15,10 +15,6 @@ CHAR_CURRENT_TIME: Final = "00002a2b-0000-1000-8000-00805f9b34fb"
 CHAR_WEIGHT: Final = "00002a9d-0000-1000-8000-00805f9b34fb"
 CHAR_BODY_COMPOSITION: Final = "00002a9c-0000-1000-8000-00805f9b34fb"
 CHAR_USER_CONTROL_POINT: Final = "00002a9f-0000-1000-8000-00805f9b34fb"
-CHAR_DB_CHANGE_INCREMENT: Final = "00002a99-0000-1000-8000-00805f9b34fb"
-
-# Beurer vendor service 0xFFFF.
-CHAR_VENDOR_USER_LIST: Final = "00000001-0000-1000-8000-00805f9b34fb"
 
 # User Control Point opcodes.
 UCP_CONSENT: Final = 0x02
@@ -31,10 +27,6 @@ CONF_USERS: Final = "users"
 CONF_USER_INDEX: Final = "user_index"
 CONF_PIN: Final = "pin"
 CONF_NAME: Final = "name"
-
-# A stored reading whose embedded timestamp is older than this (relative to now)
-# is treated as historical replay rather than a fresh live weigh-in.
-HISTORY_MAX_AGE_SECONDS: Final = 5 * 60
 
 # How long to keep the scale connection open waiting for a live weigh-in.
 CONNECT_CAPTURE_SECONDS: Final = 40

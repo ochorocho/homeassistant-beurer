@@ -209,6 +209,15 @@ def merge(weight: WeightFrame, body: BodyCompositionFrame) -> Measurement:
     return m
 
 
+def newer(a: dt.datetime | None, b: dt.datetime | None) -> bool:
+    """True if timestamp a is strictly newer than b (None sorts oldest)."""
+    if a is None:
+        return False
+    if b is None:
+        return True
+    return a > b
+
+
 def build_current_time(now: dt.datetime) -> bytes:
     """Build a Current Time (0x2A2B) payload."""
     return bytes(

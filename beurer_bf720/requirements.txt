@@ -1,3 +1,0 @@
-bleak>=0.22
-paho-mqtt>=2.1
-dbus-fast>=2.21

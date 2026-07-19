@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import NotRequired, TypedDict
 
 from homeassistant.components.bluetooth.passive_update_coordinator import (
     PassiveBluetoothCoordinatorEntity,
@@ -23,6 +24,14 @@ from . import BeurerConfigEntry
 from .const import CONF_ADDRESS, CONF_NAME, CONF_USER_INDEX, CONF_USERS, DOMAIN
 from .coordinator import BeurerCoordinator
 from .parser import Measurement
+
+
+class UserConfig(TypedDict):
+    """A configured on-scale user slot, as stored in the config entry options."""
+
+    user_index: int
+    pin: int
+    name: NotRequired[str]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,6 +125,16 @@ SENSORS: tuple[BeurerSensorEntityDescription, ...] = (
         value_fn=lambda m: m.soft_lean_mass_kg,
     ),
     BeurerSensorEntityDescription(
+        key="fat_free_mass",
+        translation_key="fat_free_mass",
+        device_class=SensorDeviceClass.WEIGHT,
+        native_unit_of_measurement=UnitOfMass.KILOGRAMS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda m: m.fat_free_mass_kg,
+    ),
+    BeurerSensorEntityDescription(
         key="impedance",
         translation_key="impedance",
         native_unit_of_measurement="Ω",
@@ -155,7 +174,7 @@ class BeurerSensor(
         self,
         coordinator: BeurerCoordinator,
         address: str,
-        user: dict,
+        user: UserConfig,
         description: BeurerSensorEntityDescription,
     ) -> None:
         """Initialise the sensor bound to a user slot."""

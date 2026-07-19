@@ -4,51 +4,16 @@ Read a **Beurer BF720** Bluetooth body-composition scale (and the protocol-compa
 **BF105**) into Home Assistant — weight and native body composition (body fat, muscle,
 water, BMI, basal metabolism, impedance) with full **multi-user** support.
 
-This repo ships **two ways** to use it — pick one:
+A native `custom_component` that uses Home Assistant's own Bluetooth stack: entities directly,
+no MQTT broker, works with a host adapter or an ESP32 BLE proxy, on any HA install (OS,
+Supervised, Container, Core). The BLE frame decoding lives in one place
+(`custom_components/beurer_ble/parser.py`) and is unit-tested (`tests/test_parser.py`).
 
-| | **Add-on** (`beurer_bf720/`) | **Integration** (`custom_components/beurer_ble/`) |
-| --- | --- | --- |
-| Runs on | HA OS / Supervised only | Any HA install (OS, Supervised, Container, Core) |
-| Data path | Docker container → **MQTT** discovery | Native HA Bluetooth → entities |
-| Needs MQTT broker | Yes | No |
-| ESP32 Bluetooth proxy | No (host adapter) | Yes (native) |
-| Install | Add-on Store (add this repo) | HACS custom repo / copy folder |
+## Install
 
-Both do the same BLE consent handshake and decode the same measurements; the code is shared
-and unit-tested (`tests/test_parser.py`).
-
----
-
-## Option A — Add-on (Settings → Add-ons)
-
-A Supervisor add-on (Docker) that reads the scale and publishes to HA over MQTT auto-discovery.
-
-**Requirements:** HA OS/Supervised, the **Mosquitto broker** add-on + **MQTT integration**, a
-host Bluetooth adapter.
-
-1. **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, add this repository's URL.
-2. Install **Beurer BF720 Scale**, open **Configuration**, add your users:
-   ```yaml
-   users:
-     - name: "Jochen"
-       user_index: 3
-       pin: 1234
-   ```
-3. **Start** the add-on. Each user appears as an MQTT device with body-composition sensors.
-
-Full details: [`beurer_bf720/DOCS.md`](beurer_bf720/DOCS.md).
-
-> The add-on uses the host's BlueZ. If HA's own *Bluetooth* integration is using the same
-> adapter they can contend for it — prefer a dedicated adapter, or use the integration below.
-
----
-
-## Option B — Integration (HACS custom component)
-
-A native `custom_component` that uses Home Assistant's Bluetooth stack (works with ESP32 BLE
-proxies, no MQTT). Install via HACS as a custom repository, or copy
-`custom_components/beurer_ble/` into your HA `config/custom_components/`. Restart, let the scale
-auto-discover, and add each user (name, index, PIN) in the config flow.
+Install via [HACS](https://hacs.xyz/) as a custom repository, or copy
+`custom_components/beurer_ble/` into your HA `config/custom_components/`. Restart Home Assistant,
+let the scale auto-discover, and add each user (name, index, PIN) in the config flow.
 
 ## Getting the consent PIN
 
@@ -56,6 +21,21 @@ The scale stores a separate 4-digit **consent PIN per user profile**. Wake the s
 profile, enter its Bluetooth/pairing mode — the scale shows its PIN. Note the PIN and the profile
 **index** (slot 1, 2, 3 …). The scale computes body composition from the profile's
 height/age/gender, so map each configured user to the correct profile.
+
+## Bonding on Home Assistant OS (BlueZ)
+
+The scale's body-composition data lives behind an *encrypted* User Data characteristic. On most
+setups this just works — CoreBluetooth and ESP32 BLE proxies bond transparently, and the
+integration also makes a best-effort `pair()` on connect. If, on a HAOS host adapter, you only
+get weight but no body composition, bond the scale once at the OS level and the persistent bond
+fixes it:
+
+```sh
+bluetoothctl
+# in the prompt:
+pair  AA:BB:CC:DD:EE:FF     # the scale's address
+trust AA:BB:CC:DD:EE:FF
+```
 
 ## Credits & licence
 

@@ -66,6 +66,7 @@
       "muscle_mass": { "name": "Muscle mass" },
       "water_mass": { "name": "Water mass" },
       "soft_lean_mass": { "name": "Soft lean mass" },
+      "fat_free_mass": { "name": "Fat-free mass" },
       "impedance": { "name": "Impedance" }
     }
   }
